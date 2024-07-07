@@ -1,0 +1,83 @@
+import glob
+import json
+from music21 import converter, instrument, note, chord
+
+def get_notes_with_timing(midi_file):
+    """ Get notes with timing and placement from a single MIDI file """
+    notes_with_timing = []
+    current_offset = 0.0  # To keep track of cumulative time
+
+    midi = converter.parse(midi_file)
+
+    print(f"Parsing {midi_file}")
+
+    notes_to_parse = None
+
+    try:  # file has instrument parts
+        s2 = instrument.partitionByInstrument(midi)
+        notes_to_parse = s2.parts[0].recurse()
+    except:  # file has notes in a flat structure
+        notes_to_parse = midi.flat.notes
+
+    for element in notes_to_parse:
+        if isinstance(element, note.Note):
+            start_time = element.offset + current_offset
+            end_time = start_time + element.quarterLength
+            notes_with_timing.append({
+                'pitch': element.pitch.midi,  # Store MIDI pitch value
+                'velocity': element.volume.velocity,
+                'start_time': start_time,
+                'end_time': end_time
+            })
+        elif isinstance(element, chord.Chord):
+            for pitch in element.pitches:
+                start_time = element.offset + current_offset
+                end_time = start_time + element.quarterLength
+                notes_with_timing.append({
+                    'pitch': pitch.midi,  # Store MIDI pitch value
+                    'velocity': element.volume.velocity,
+                    'start_time': start_time,
+                    'end_time': end_time
+                })
+
+    current_offset += midi.highestTime  # Update cumulative time
+
+    return notes_with_timing
+
+def segment_into_sequences(notes_with_timing, sequence_length):
+    """ Segment notes with timing into sequences of specified length """
+    sequences = []
+    num_notes = len(notes_with_timing)
+
+    # Determine the number of full sequences
+    num_sequences = num_notes // sequence_length
+
+    for i in range(num_sequences):
+        start_index = i * sequence_length
+        end_index = start_index + sequence_length
+        sequence = notes_with_timing[start_index:end_index]
+        sequences.append(sequence)
+
+    return sequences
+
+def save_to_json(data, filename):
+    """ Save data to a JSON file """
+    with open(filename, 'w') as f:
+        json.dump(data, f, indent=4)  # Indent for readability
+
+def main():
+    sequence_length = 100  # Define the length of each sequence (100 notes)
+    midi_files = glob.glob("midi_songsKEYCHANGE/*.mid")
+    all_sequences = []
+
+    for midi_file in midi_files:
+        notes_with_timing = get_notes_with_timing(midi_file)
+        sequences = segment_into_sequences(notes_with_timing, sequence_length)
+        for seq in sequences:
+            print(f"Sequence length: {len(seq)}")  # Debug print for sequence length
+        all_sequences.extend(sequences)
+
+    save_to_json(all_sequences, 'data/100_note_sequences_by_song.json')
+
+if __name__ == '__main__':
+    main()
